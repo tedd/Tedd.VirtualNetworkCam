@@ -19,7 +19,7 @@ namespace KinectCam
 
         private const int c_iDefaultWidth = 1920;
         private const int c_iDefaultHeight = 1080;
-        private const int c_nDefaultBitCount = 16;
+        private const int c_nDefaultBitCount = 24;
         private const int c_iDefaultFPS = 30;
         private const int c_iFormatsCount = 8;
         private const int c_nGranularityW = 160;
@@ -54,13 +54,15 @@ namespace KinectCam
         internal static Memory<byte> FrontBuffer;
         internal static Memory<byte> BackBuffer;
 
+        public static readonly object FrontBufferLock = new object();
+
         #endregion
 
         #region Constructor
         public VirtualCamFilter()
             : base("Tedd.VirtualNetworkCam")
         {
-            Logger.Info("VirtualCamFilter.Ctn()");
+            Logger.Info("VirtualCamFilter.Ctr()");
 
             if (_tcpServer == null)
             {
@@ -86,14 +88,17 @@ namespace KinectCam
         private unsafe void ShowNextImage(IntPtr ptr, int length)
         {
             var p = new Span<byte>((void*)ptr, length);
-            if (FrontBuffer.Length > length)
+            lock (FrontBufferLock)
             {
-                Logger.Info($"Warning: Frontbuffer {FrontBuffer.Length} larger than destination {length}");
-                FrontBuffer.Span.Slice(0, length).CopyTo(p);
-                return;
-            }
+                if (FrontBuffer.Length > length)
+                {
+                    Logger.Info($"Warning: Frontbuffer {FrontBuffer.Length} larger than destination {length}");
+                    FrontBuffer.Span.Slice(0, length).CopyTo(p);
+                    return;
+                }
 
-            FrontBuffer.Span.CopyTo(p);
+                FrontBuffer.Span.CopyTo(p);
+            }
         }
 
         #region Overridden Methods
@@ -112,6 +117,8 @@ namespace KinectCam
                 m_nMaxHeight = GetDeviceCaps(m_hScreenDC, 10); // VERTRES
                 m_hMemDC = CreateCompatibleDC(m_hScreenDC);
                 m_hBitmap = CreateCompatibleBitmap(m_hScreenDC, m_nWidth, Math.Abs(m_nHeight));
+
+                Logger.Debug($"Pause(): Filterstate stopped: MaxWidth: {m_nMaxWidth}, MaxHeight: {m_nMaxHeight}");
             }
             return base.Pause();
         }
@@ -144,6 +151,7 @@ namespace KinectCam
 
         public int CheckMediaType(AMMediaType pmt)
         {
+            Logger.Debug($"CheckMediaType: FormatSize: {pmt.formatSize}, FormatType: {pmt.formatType}");
             if (pmt == null) return E_POINTER;
             if (pmt.formatPtr == IntPtr.Zero) return VFW_E_INVALIDMEDIATYPE;
             if (pmt.majorType != MediaType.Video)
@@ -247,6 +255,9 @@ namespace KinectCam
             VideoStreamConfigCaps _caps;
             GetDefaultCaps(0, out _caps);
 
+
+            Logger.Debug($"GetMediaType: iPosition: {iPosition}, FormatType: {pMediaType.formatType}, SubType: {pMediaType.subType}");
+
             int nWidth = 0;
             int nHeight = 0;
 
@@ -283,10 +294,11 @@ namespace KinectCam
             vih.BmiHeader.Planes = 1;
             vih.BmiHeader.ImageSize = vih.BmiHeader.Width * Math.Abs(vih.BmiHeader.Height) * vih.BmiHeader.BitCount / 8;
 
-            if (vih.BmiHeader.BitCount == 16)
-            {
-                pMediaType.subType = DirectShow.MediaSubType.YUY2;
-            }        
+            Logger.Debug($"GetMediaType: vih.BmiHeader: BitCount: {vih.BmiHeader.BitCount}, Compression: {vih.BmiHeader.Compression}, Width: {vih.BmiHeader.Width}, Height: {vih.BmiHeader.Height}");
+            //if (vih.BmiHeader.BitCount == 16)
+            //{
+            //    pMediaType.subType = DirectShow.MediaSubType.YUY2;
+            //}        
             if (vih.BmiHeader.BitCount == 32)
             {
                 pMediaType.subType = DirectShow.MediaSubType.RGB32;
@@ -550,5 +562,16 @@ namespace KinectCam
         private static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
 
         #endregion
+
+        public static Memory<byte> GetNextBuffer()
+        {
+            lock (FrontBufferLock)
+            {
+                var fb = FrontBuffer;
+                FrontBuffer = BackBuffer;
+                BackBuffer = fb;
+                return fb;
+            }
+        }
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using KinectX.Data;
@@ -24,6 +25,7 @@ namespace Tedd.KinectNetworkCamClient.Cam
         public int ColorImageLength;
         //public IntPtr ColorImagePtr;
         public byte[] ColorImage;
+        public readonly ReaderWriterLockSlim ColorImageLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
 
         public delegate void NewImageDelegate(KinectCam sender, byte[] imagePointer);
 
@@ -39,22 +41,20 @@ namespace Tedd.KinectNetworkCamClient.Cam
             _kinectSensor = KinectSensor.GetDefault();
             _kinectSensor.IsAvailableChanged += Sensor_IsAvailableChanged;
 
+            // Set up new image event
             _multiFrameSourceReader = _kinectSensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Color | FrameSourceTypes.BodyIndex);
-
             this._multiFrameSourceReader.MultiSourceFrameArrived += Reader_MultiSourceFrameArrived;
 
-            //_depthFrameReader = _kinectSensor.DepthFrameSource.OpenReader();
-            //_depthFrameReader.FrameArrived += Reader_FrameArrived;
+            // Depth buffer
             _depthFrameDescription = _kinectSensor.DepthFrameSource.FrameDescription;
             _depthPixels = new byte[_depthFrameDescription.Width * _depthFrameDescription.Height * _depthFrameDescription.BytesPerPixel];
 
-            //ColorFrameDescription = _kinectSensor.ColorFrameSource.FrameDescription;
+            // Color image buffer
             ColorFrameDescription = _kinectSensor.ColorFrameSource.CreateFrameDescription(ColorImageFormat.Bgra);
             ColorImageLength = (int)(ColorFrameDescription.Width * ColorFrameDescription.Height * ColorFrameDescription.BytesPerPixel);
-            //_colorImageLength= (int)((_bitmap.BackBufferStride * (_bitmap.PixelHeight - 1)) + (_bitmap.PixelWidth * _bytesPerPixel));
-            //ColorImagePtr = Marshal.AllocHGlobal(ColorImageLength);
             ColorImage = new byte[ColorImageLength];
 
+            // Coordinate mapping
             _coordinateMapper = _kinectSensor.CoordinateMapper;
             _colorMappedToDepthPoints = new DepthSpacePoint[ColorFrameDescription.Width * ColorFrameDescription.Height];
 
@@ -67,49 +67,42 @@ namespace Tedd.KinectNetworkCamClient.Cam
             if (multiSourceFrame == null)
                 return;
 
+            // Aquiure all frames
             using var depthFrame = multiSourceFrame.DepthFrameReference.AcquireFrame();
             using var colorFrame = multiSourceFrame.ColorFrameReference.AcquireFrame();
-            
             using var bodyIndexFrame = multiSourceFrame.BodyIndexFrameReference.AcquireFrame();
 
             // If any frame has expired by the time we process this event, return.
             if (depthFrame == null || colorFrame == null || bodyIndexFrame == null)
                 return;
 
-            // Access the depth frame data directly via LockImageBuffer to avoid making a copy
+            // Copy depth frame
             using var depthFrameData = depthFrame.LockImageBuffer();
-            _coordinateMapper.MapColorFrameToDepthSpaceUsingIntPtr(
-                depthFrameData.UnderlyingBuffer,
-                depthFrameData.Size,
-                _colorMappedToDepthPoints);
-            
+            _coordinateMapper.MapColorFrameToDepthSpaceUsingIntPtr(depthFrameData.UnderlyingBuffer, depthFrameData.Size, _colorMappedToDepthPoints);
 
             var depthFrameDescription = depthFrame.FrameDescription;
             var depthWidth = depthFrameDescription.Width;
             var depthHeight = depthFrameDescription.Height;
 
-            //var colorFrameDescription = colorFrame.FrameDescription;
-            //var colorFrameDescription = colorFrame.CreateFrameDescription(ColorImageFormat.Bgra);
-            //colorFrameDescription.
-            //colorFrame.CopyConvertedFrameDataToIntPtr(_colorImagePtr, (uint)_colorImageLength, ColorImageFormat.Bgra);
+            // Copy color frame
+            ColorImageLock.EnterWriteLock();
             fixed (byte* ColorImagePtr = ColorImage)
             {
-
                 using var colorFrameData = colorFrame.LockRawImageBuffer();
-                var colorFrameSpan = new Span<byte>((void*) colorFrameData.UnderlyingBuffer, (int) colorFrameData.Size);
+                var colorFrameSpan = new Span<byte>((void*)colorFrameData.UnderlyingBuffer, (int)colorFrameData.Size);
                 var colorImageSpan = new Span<byte>((void*)ColorImagePtr, ColorImageLength);
-                //var toImageSpan = new Span<byte>((void*) ColorImagePtr, ColorImageLength);
+                var colorImageSpanUInt32 = new Span<UInt32>((void*)ColorImagePtr, ColorImageLength);
+
 
                 //colorFrameSpan.CopyTo(colorImageSpan);
                 colorFrame.CopyConvertedFrameDataToArray(ColorImage, ColorImageFormat.Bgra);
-
-
+                
+                // Get body index data
                 using var bodyIndexData = bodyIndexFrame.LockImageBuffer();
-                var bodyIndexDataPointer = (byte*) bodyIndexData.UnderlyingBuffer;
-                //int colorMappedToDepthPointCount = _colorMappedToDepthPoints.Length;
+                var bodyIndexDataPointer = (byte*)bodyIndexData.UnderlyingBuffer;
                 var colorMappedToDepthPointsPointer = new Span<DepthSpacePoint>(_colorMappedToDepthPoints);
-                //var colorImageSpan = new Span<byte>((void*) ColorImagePtr, ColorImageLength);
 
+                // Go over and black out all colors that are not a body index
                 for (var colorIndex = 0; colorIndex < colorMappedToDepthPointsPointer.Length; ++colorIndex)
                 {
                     float colorMappedToDepthX = colorMappedToDepthPointsPointer[colorIndex].X;
@@ -121,8 +114,8 @@ namespace Tedd.KinectNetworkCamClient.Cam
                         !float.IsNegativeInfinity(colorMappedToDepthY))
                     {
                         // Make sure the depth pixel maps to a valid point in color space
-                        int depthX = (int) (colorMappedToDepthX + 0.5f);
-                        int depthY = (int) (colorMappedToDepthY + 0.5f);
+                        int depthX = (int)(colorMappedToDepthX + 0.5f);
+                        int depthY = (int)(colorMappedToDepthY + 0.5f);
 
                         // If the point is not valid, there is no body index there.
                         if ((depthX >= 0) && (depthX < depthWidth) && (depthY >= 0) && (depthY < depthHeight))
@@ -132,31 +125,22 @@ namespace Tedd.KinectNetworkCamClient.Cam
                             // If we are tracking a body for the current pixel, do not zero out the pixel
                             if (bodyIndexDataPointer[depthIndex] != 0xff)
                             {
-                                //colorImageSpan[ColorImageLength-4-(colorIndex*4)] = colorFrameSpan[colorIndex+1];
-                                //colorImageSpan[ColorImageLength-3-(colorIndex*4)] = colorFrameSpan[colorIndex+2];
-                                //colorImageSpan[ColorImageLength-2-(colorIndex*4)] = colorFrameSpan[colorIndex+3];
-                                //colorImageSpan[ColorImageLength-1-(colorIndex*4)] = colorFrameSpan[colorIndex+4];
-
-                                colorImageSpan[(colorIndex*4)-4] = colorFrameSpan[(colorIndex*2)+1];
-                                colorImageSpan[(colorIndex*4)-3] = colorFrameSpan[(colorIndex * 2) + 2];
-                                colorImageSpan[(colorIndex*4)-2] = colorFrameSpan[(colorIndex * 2) + 1];
-                                colorImageSpan[(colorIndex*4)-1] = colorFrameSpan[(colorIndex * 2) + 2];
+                                //colorImageSpan[(colorIndex * 4) - 4] = colorFrameSpan[(colorIndex * 2) + 1];
+                                //colorImageSpan[(colorIndex * 4) - 3] = colorFrameSpan[(colorIndex * 2) + 2];
+                                //colorImageSpan[(colorIndex * 4) - 2] = colorFrameSpan[(colorIndex * 2) + 1];
+                                //colorImageSpan[(colorIndex * 4) - 1] = colorFrameSpan[(colorIndex * 2) + 2];
                                 continue;
                             }
                         }
                     }
 
-                    //colorImageSpan[ColorImageLength - 4 - (colorIndex * 2)] = 0;
-                    //colorImageSpan[ColorImageLength - 3 - (colorIndex * 2)] = 0;
-                    //colorImageSpan[ColorImageLength - 2 - (colorIndex * 2)] = 0;
-                    //colorImageSpan[ColorImageLength - 1 - (colorIndex * 2)] = 0;
-
-                    colorImageSpan[(colorIndex * 4)+0] = 0;
-                    colorImageSpan[(colorIndex * 4)+1] = 0;
-                    colorImageSpan[(colorIndex * 4)+2] = 0;
-                    colorImageSpan[(colorIndex * 4)+3] = 0;
+                    // Its two bytes per pixel
+                    colorImageSpanUInt32[colorIndex] = 0x0000FF00;
+                    //colorImageSpan[(colorIndex * 2) + 0] = 0;
+                    //colorImageSpan[(colorIndex * 2) + 1] = 0;
                 }
             }
+            ColorImageLock.ExitWriteLock();
 
             NewImage?.Invoke(this, ColorImage);
         }
@@ -166,32 +150,7 @@ namespace Tedd.KinectNetworkCamClient.Cam
 
         }
 
-        private unsafe void Reader_FrameArrived(object sender, DepthFrameArrivedEventArgs e)
-        {
-            using var depthFrame = e.FrameReference.AcquireFrame();
-            if (depthFrame == null)
-                return;
-
-            using var depthBuffer = depthFrame.LockImageBuffer();
-            var frameData = (ushort*)depthBuffer.UnderlyingBuffer;
-
-            var from = new Span<byte>(frameData, (int)depthBuffer.Size);
-            var to = new Span<byte>(_depthPixels);
-            from.CopyTo(to);
-        }
-
-        public void ReadLoop()
-        {
-
-            //using (var ks = new KxStream())
-            //{
-            //    var color = ks.LatestRGBImage();
-            //    var cvColor = CvColor.FromBGR(color);
-            //    var depth = ks.LatestDepthImage();
-            //    cvColor.Show();
-            //}
-        }
-
+      
         #region IDisposable
 
         /// <summary>Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.</summary>

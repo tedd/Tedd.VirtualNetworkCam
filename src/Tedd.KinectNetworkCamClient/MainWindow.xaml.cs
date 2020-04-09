@@ -33,7 +33,7 @@ namespace Tedd.KinectNetworkCamClient
         private KinectCam _cam;
         private NetworkCamDriverClient _client;
         private Thread _sendThread;
-        private ManualResetEvent _sendWaiter;
+        private readonly ManualResetEventSlim _nextImageWaiter=new ManualResetEventSlim(false);
 
         public ImageSource ImageSource
         {
@@ -52,11 +52,10 @@ namespace Tedd.KinectNetworkCamClient
             DataContext = this;
             _cam = new KinectCam();
             _bitmap = new WriteableBitmap(_cam.ColorFrameDescription.Width, _cam.ColorFrameDescription.Height, 75, 75, PixelFormats.Bgra32, null);
+            //_bitmapMem= new Memory<byte>((void*)_bitmap.BackBuffer, _bitmap.PixelWidth * _bitmap.PixelHeight * 4);
+
             _cam.NewImage += CamOnNewImage;
-
-            _sendWaiter = new ManualResetEvent(false);
             
-
             _client = new NetworkCamDriverClient();
             _client.Connect("127.0.0.1", 9090);
             Thread.Sleep(1000);
@@ -67,33 +66,67 @@ namespace Tedd.KinectNetworkCamClient
 
         private unsafe void SendThreadLoop()
         {
-            var ibytes = new byte[_cam.ColorImage.Length];
-            var ispan = new Span<byte>(ibytes);
+            byte[] backBuffer = null;
+            Span<byte> backBufferSpan = null;
             for (; ; )
             {
-                _sendWaiter.WaitOne();
+                _nextImageWaiter.Wait();
+                _cam.ColorImageLock.EnterReadLock();
+
                 var image = new ReadOnlySpan<byte>(_cam.ColorImage);
-                image.CopyTo(ispan);
-                //for (var x = 0; x < 1920; x++)
-                //{
-                //    for (var y = 0; y < 816; y++)
-                //    {
-                //        var si = ((y * 1080) + x)*4;
-                //        var sd = ((y * 816) + x)*4;
-                //        ispan[sd+0] = image[si+0];
-                //        ispan[sd + 1] = image[si+1];
-                //        ispan[sd + 2] = image[si+2];
-                //        ispan[sd + 3] = image[si+3];
-                //    }
-                //}
-                
-                MemoryExtensions.Reverse(ispan);
-                for (var i = 0; i < ispan.Length; i++)
+                //var image = st;
+                var cl = _client._width * _client._height * _client._bytesPerPixel;
+                if (backBuffer == null || backBuffer.Length != cl)
                 {
-                    if (ispan[i] == 0)
-                        ispan[i] = fr.NextByte();
+                    backBuffer = new byte[cl];
+                    backBufferSpan = new Span<byte>(backBuffer);
                 }
-                _client.SendImage(ibytes);
+
+                //image.CopyTo(backBufferSpan);
+
+                var width = Math.Min(_cam.ColorFrameDescription.Width, _client._width);
+                var height = Math.Min(_cam.ColorFrameDescription.Height, _client._height);
+                var dcl = backBufferSpan.Length -1;
+                for (var x = 0; x < width; x++)
+                {
+                    for (var y = 0; y < height; y++)
+                    {
+                        var si = ((y * _cam.ColorFrameDescription.Width) + x) * 4;
+
+                        var sd = ((y * _client._width) + x) * _client._bytesPerPixel;
+                        // Flip y axis
+                        //var sd = ((y * _client._width) + (_client._width-1-x)) * _client._bytesPerPixel;
+
+                        if (_client._bytesPerPixel == 3)
+                        {
+                            backBufferSpan[dcl - (sd + 0)] = image[si + 2];
+                            backBufferSpan[dcl - (sd + 1)] = image[si + 1];
+                            backBufferSpan[dcl - (sd + 2)] = image[si + 0];
+                        }
+                        else if (_client._bytesPerPixel == 4)
+                        {
+                            backBufferSpan[dcl - (sd + 0)] = image[si + 4];
+                            backBufferSpan[dcl - (sd + 1)] = image[si + 3];
+                            backBufferSpan[dcl - (sd + 2)] = image[si + 2];
+                            backBufferSpan[dcl - (sd + 4)] = image[si + 1];
+                        }
+                        else
+                        {
+                            for (var i = 0; i < _client._bytesPerPixel; i++)
+                                backBufferSpan[sd + i] = fr.NextByte();
+                        }
+                    }
+                }
+                _cam.ColorImageLock.ExitReadLock();
+
+                ////MemoryExtensions.Reverse(ispan);
+                //for (var i = 0; i < ispan.Length; i++)
+                //{
+                //    if (ispan[i] == 0)
+                //        ispan[i] = fr.NextByte();
+                //}
+                //Thread.Sleep(10);
+                _client.SendImage(backBuffer);
                 //_client.SendImage(new ReadOnlySpan<byte>(_cam.ColorImage));
             }
 
@@ -101,15 +134,35 @@ namespace Tedd.KinectNetworkCamClient
 
         private unsafe void CamOnNewImage(KinectCam sender, byte[] image)
         {
-            _sendWaiter.Set();
-            _sendWaiter.Reset();
+            _nextImageWaiter.Set();
 
             _bitmap.Lock();
             var sp = new Span<byte>(image);
             var st = new Span<byte>((void*)_bitmap.BackBuffer, _bitmap.PixelWidth * _bitmap.PixelHeight * 4);
+            _cam.ColorImageLock.EnterReadLock();
             sp.CopyTo(st);
+            _cam.ColorImageLock.ExitReadLock();
+            _nextImageWaiter.Reset();
+
+            //for (var x = 0; x < 1920; x++)
+            //{
+            //    for (var y = 0; y < 816; y++)
+            //    {
+            //        var si = ((y * 1920) + x) * 4;
+            //        var sd = ((y * 1920) + x) * 4;
+            //        st[sd + 0] = image[si + 0];
+            //        st[sd + 1] = image[si + 1];
+            //        st[sd + 2] = image[si + 2];
+            //    }
+            //}
+
             _bitmap.AddDirtyRect(new Int32Rect(0, 0, _bitmap.PixelWidth, _bitmap.PixelHeight));
             _bitmap.Unlock();
+
+            
+
+            //_continueWaiter.WaitOne();
+
         }
     }
 }

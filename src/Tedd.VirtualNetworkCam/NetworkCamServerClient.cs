@@ -202,16 +202,22 @@ namespace Tedd.VirtualNetworkCam
         private void ProcessCommand(Memory<byte> bufferMemory)
         {
             //Logger.Debug($"Received command {command} with payload size {payloadSize}");
-            var dm = VirtualCamFilter.FrontBuffer;
+            var dm = VirtualCamFilter.GetNextBuffer();
             if (payloadSize > 0)
             {
-                Parallel.For(0, ImageSize, (i) =>
-                {
-                    dm.Span[ImageSize - i] = bufferMemory.Span[i];
-                });
+                bufferMemory.CopyTo(dm);
+                //Parallel.For(0, ImageSize, (i) =>
+                //{
+                //    dm.Span[ImageSize - i] = bufferMemory.Span[i];
+                //});
+
+                if (bufferMemory.Length != VirtualCamFilter.FrontBuffer.Length)
+                    Logger.Debug(
+                        $"Incoming image of {bufferMemory.Length} bytes does not match buffer of {VirtualCamFilter.FrontBuffer.Length}");
                 bufferMemory.Span.CopyTo(VirtualCamFilter.FrontBuffer.Span);
             }
-
+            // Flip in again
+            VirtualCamFilter.GetNextBuffer();
         }
 
 
