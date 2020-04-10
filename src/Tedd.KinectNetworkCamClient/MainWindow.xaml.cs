@@ -16,7 +16,6 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using Microsoft.Kinect;
-using OpenCvSharp;
 using Tedd.KinectNetworkCamClient.Cam;
 using Tedd.VirtualNetworkCam.Client;
 using Tedd.RandomUtils;
@@ -75,7 +74,7 @@ namespace Tedd.KinectNetworkCamClient
 
                 var image = new ReadOnlySpan<byte>(_cam.ColorImage);
                 //var image = st;
-                var cl = _client._width * _client._height * _client._bytesPerPixel;
+                var cl = _client.Width * _client.Height * _client.BytesPerPixel;
                 if (backBuffer == null || backBuffer.Length != cl)
                 {
                     backBuffer = new byte[cl];
@@ -84,8 +83,8 @@ namespace Tedd.KinectNetworkCamClient
 
                 //image.CopyTo(backBufferSpan);
 
-                var width = Math.Min(_cam.ColorFrameDescription.Width, _client._width);
-                var height = Math.Min(_cam.ColorFrameDescription.Height, _client._height);
+                var width = Math.Min(_cam.ColorFrameDescription.Width, _client.Width);
+                var height = Math.Min(_cam.ColorFrameDescription.Height, _client.Height);
                 var dcl = backBufferSpan.Length -1;
                 for (var x = 0; x < width; x++)
                 {
@@ -93,17 +92,17 @@ namespace Tedd.KinectNetworkCamClient
                     {
                         var si = ((y * _cam.ColorFrameDescription.Width) + x) * 4;
 
-                        var sd = ((y * _client._width) + x) * _client._bytesPerPixel;
+                        var sd = ((y * _client.Width) + x) * _client.BytesPerPixel;
                         // Flip y axis
                         //var sd = ((y * _client._width) + (_client._width-1-x)) * _client._bytesPerPixel;
 
-                        if (_client._bytesPerPixel == 3)
+                        if (_client.BytesPerPixel == 3)
                         {
                             backBufferSpan[dcl - (sd + 0)] = image[si + 2];
                             backBufferSpan[dcl - (sd + 1)] = image[si + 1];
                             backBufferSpan[dcl - (sd + 2)] = image[si + 0];
                         }
-                        else if (_client._bytesPerPixel == 4)
+                        else if (_client.BytesPerPixel == 4)
                         {
                             backBufferSpan[dcl - (sd + 0)] = image[si + 4];
                             backBufferSpan[dcl - (sd + 1)] = image[si + 3];
@@ -112,7 +111,7 @@ namespace Tedd.KinectNetworkCamClient
                         }
                         else
                         {
-                            for (var i = 0; i < _client._bytesPerPixel; i++)
+                            for (var i = 0; i < _client.BytesPerPixel; i++)
                                 backBufferSpan[sd + i] = fr.NextByte();
                         }
                     }

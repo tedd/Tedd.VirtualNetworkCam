@@ -9,9 +9,9 @@ namespace Tedd.VirtualNetworkCam.Client
     {
         private TcpClient _client;
         private NetworkStream _networkStream;
-        public int _bytesPerPixel;
-        public int _height;
-        public int _width;
+        public int BytesPerPixel;
+        public int Height;
+        public int Width;
         public NetworkCamDriverClient() { }
 
         public void Connect(string server, int port)
@@ -39,15 +39,15 @@ namespace Tedd.VirtualNetworkCam.Client
                 throw new Exception($"Unexpected header: Needed 0xFF command start, got {header[0].ToString("X2")}");
             if (header[1] != 0x02)
                 throw new Exception($"Unexpected header: Needed 0x02 header info, got {header[1].ToString("X2")}");
-            _width = (header[2] << 24)
+            Width = (header[2] << 24)
                          | (header[3] << 16)
                          | (header[4] << 8)
                          | header[5];
-            _height = (header[6] << 24)
+            Height = (header[6] << 24)
                          | (header[7] << 16)
                          | (header[8] << 8)
                          | header[9];
-            _bytesPerPixel = (byte)((header[10] + 7) / 8);
+            BytesPerPixel = (byte)((header[10] + 7) / 8);
         }
 
 #if !NET48 && !NETSTANDARD2_0

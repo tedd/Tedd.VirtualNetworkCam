@@ -6,8 +6,6 @@ using System.Text;
 using System.Threading;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using KinectX.Data;
-using KinectX.Extensions;
 using Microsoft.Kinect;
 
 namespace Tedd.KinectNetworkCamClient.Cam
