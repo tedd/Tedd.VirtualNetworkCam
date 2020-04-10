@@ -12,6 +12,9 @@ Compile `Tedd.VirtualNetworkCam` and locate the output folder. Copy these files 
 You can change compile target in .Net to be 32-bit or 64-bit. It is important that you modify `install.bat` and `uninstall.bat` accordingly for it to work. The variable `set FRAMEWORKDIR=%windir%\Microsoft.NET\Framework\v4.0.30319` should be changed to `set FRAMEWORKDIR=%windir%\Microsoft.NET\Framework64\v4.0.30319` for 64-bit.
 
 ## Points of interest
+### Debugging
+Note that since it listens to TCP port 9090 then starting two apps that use camera will cause the last one to fail. There is a log file located at `%temp%\Tedd.VirtualNetworkCam.log`.
+
 ### Project: Tedd.VirtualNetworkCam
 `VirtualCamFilter.cs` is the main entrypoint. This is also where request for new frames are being processed. It sets up a `NetworkCamServer.cs` for listen, which in turn creates `NetworkCamServerClient.cs` to handle each client connection. The code in these are a bit messy as I started with [System.IO.Pipelines](https://devblogs.microsoft.com/dotnet/system-io-pipelines-high-performance-io-in-net/) and had to rewrite as it got stuck on asyncronous read (something with COM and STA vs threadpool?).
 
