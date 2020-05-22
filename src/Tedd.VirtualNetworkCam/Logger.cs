@@ -44,7 +44,7 @@ _sw = new StreamWriter(_logFile, Encoding.UTF8);
         {
             lock (_sw)
             {
-                _sw?.WriteLine(str ?? "<null>");
+                _sw?.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}]" + (str ?? "<null>"));
                 _sw?.Flush();
                 _logFile?.Flush(true);
             }

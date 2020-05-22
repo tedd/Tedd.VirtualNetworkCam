@@ -205,7 +205,7 @@ namespace Tedd.VirtualNetworkCam
             var dm = VirtualCamFilter.GetNextBuffer();
             if (payloadSize > 0)
             {
-                bufferMemory.CopyTo(dm);
+                bufferMemory.Slice(0, Math.Min(bufferMemory.Length, dm.Length)).CopyTo(dm);
                 //Parallel.For(0, ImageSize, (i) =>
                 //{
                 //    dm.Span[ImageSize - i] = bufferMemory.Span[i];
@@ -217,7 +217,7 @@ namespace Tedd.VirtualNetworkCam
                 bufferMemory.Span.CopyTo(VirtualCamFilter.FrontBuffer.Span);
             }
             // Flip in again
-            VirtualCamFilter.GetNextBuffer();
+            //VirtualCamFilter.GetNextBuffer();
         }
 
 

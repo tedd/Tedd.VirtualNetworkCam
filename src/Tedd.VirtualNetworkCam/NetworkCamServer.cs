@@ -24,6 +24,7 @@ namespace Tedd.VirtualNetworkCam
 
         public async Task StartAsync()
         {
+            Logger.Info("Is64BitProcess: " + Environment.Is64BitProcess);
             Logger.Info("Listening to TCP port " + _port);
             TcpListener listener = new TcpListener(_port);
             listener.Start();
