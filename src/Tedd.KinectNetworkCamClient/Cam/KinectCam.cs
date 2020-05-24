@@ -161,11 +161,9 @@ namespace Tedd.KinectNetworkCamClient.Cam
                             // If we are tracking a body for the current pixel, do not zero out the pixel
                             if (bodyIndexDataPointer[depthIndex] != 0xff)
                             {
-                                //colorImageSpan[(colorIndex * 4) - 4] = colorFrameSpan[(colorIndex * 2) + 1];
-                                //colorImageSpan[(colorIndex * 4) - 3] = colorFrameSpan[(colorIndex * 2) + 2];
-                                //colorImageSpan[(colorIndex * 4) - 2] = colorFrameSpan[(colorIndex * 2) + 1];
-                                //colorImageSpan[(colorIndex * 4) - 1] = colorFrameSpan[(colorIndex * 2) + 2];
-                                colorImageSpanUInt32[colorIndex] |= 0x000000FF;
+                                // Set alpha to fully opaque
+                                // For some reason we are ARGB
+                                colorImageSpanUInt32[colorIndex] |= 0xFF000000;
                                 continue;
                             }
                         }
@@ -177,7 +175,7 @@ namespace Tedd.KinectNetworkCamClient.Cam
             }
             ColorImageLock.ExitWriteLock();
             NewImage?.Invoke(this, ColorImage);
-            
+
 
         }
 

@@ -75,17 +75,18 @@ namespace Tedd.KinectNetworkCamClient
 
         private static UInt32 Blend(UInt32 background, UInt32 foreground)
         {
-            var fga = (foreground & 0x000000FF);
+            var fga = foreground >>24;
             if (fga == 0)
-                return background | 0xFF000000;
+                return (background | 0xFF000000);
+            //return foreground | 0xFF000000;
             var alpha = ((fga)) / 255f;
             var alphaR = 1f - alpha;
-            //var r = (byte)(((background >> 24) * alphaR) + ((foreground >> 24) * alpha));
-            var b = (byte)((((background >> 24) & 0xFF) * alphaR) + (((foreground >> 24) & 0xFF) * alpha));
-            var g = (byte)((((background >>16) & 0xFF) * alphaR) + (((foreground >> 16) & 0xFF) * alpha));
-            var r = (byte)((((background >> 8) & 0xFF) * alphaR) + (((foreground >> 8) & 0xFF) * alpha));
-            var a = 255;
-            return ((uint)b << 24) | ((uint)g << 16) | ((uint)r << 8) | (uint)a;
+            var b = (byte)((((background >> 16) & 0xFF) * alpha) + (((foreground >> 16) & 0xFF) * alphaR));
+            var g = (byte)((((background >> 8) & 0xFF) * alpha) + (((foreground >> 8) & 0xFF) * alphaR));
+            var r = (byte)((((background >> 0) & 0xFF) * alpha) + (((foreground >> 0) & 0xFF) * alphaR));
+            //var a = 255;
+            return ((uint) b << 16) | ((uint) g << 8) | ((uint) r << 0) | 0xFF000000;
+
             //if (alpha == 0)
             //    return color1;
             //return color2;
@@ -108,6 +109,13 @@ namespace Tedd.KinectNetworkCamClient
 
                 // Source image
                 var image = FinishedImage.ToSpanByte();
+
+                //// Special case when dimensions and format match
+                //if (width == Width && height == Height && bytesPerPixel == 4)
+                //{
+                //    image.CopyTo(target);
+                //    return;
+                //}
 
                 // Copy image to target. Target may not match size or bit depth.
                 // So... First of all, lets not resize image. We copy whatever we have.
@@ -132,6 +140,9 @@ namespace Tedd.KinectNetworkCamClient
                             target[dcl - (sd + 0)] = image[si + 2];
                             target[dcl - (sd + 1)] = image[si + 1];
                             target[dcl - (sd + 2)] = image[si + 0];
+                            //target[dcl - (sd + 0)] = image[si + 0];
+                            //target[dcl - (sd + 1)] = image[si + 1];
+                            //target[dcl - (sd + 2)] = image[si + 2];
                         }
                         // 32-bit
                         else if (bytesPerPixel == 4)
