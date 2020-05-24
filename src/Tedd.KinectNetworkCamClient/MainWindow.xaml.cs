@@ -31,7 +31,7 @@ namespace Tedd.KinectNetworkCamClient
         private KinectCam _cam;
         private NetworkCamDriverClient _client;
         private Thread _sendThread;
-        private readonly ManualResetEventSlim _nextImageWaiter=new ManualResetEventSlim(false);
+        private readonly ManualResetEventSlim _nextImageWaiter = new ManualResetEventSlim(false);
         private ImageMixer _imageMixer;
 
         /// <summary>
@@ -41,11 +41,12 @@ namespace Tedd.KinectNetworkCamClient
         {
             this.InitializeComponent();
 
-            
+
             _cam = new KinectCam();
             _cam.NewImage += CamOnNewImage;
 
             _imageMixer = new ImageMixer(_cam.ColorFrameDescription.Width, _cam.ColorFrameDescription.Height);
+            _imageMixer.BackgroundImage.LoadFile("Background.jpg");
             // TODO: Load background PNG file into BackgroundImage
 
             DataContext = _imageMixer;
@@ -71,8 +72,9 @@ namespace Tedd.KinectNetworkCamClient
                 _nextImageWaiter.Wait();
 
                 // Copy (convert) mixed image to backbuffer
+                // CopyTo will put read lock on _imageMixer to avoid tearing
                 _imageMixer.CopyTo(backBufferSpan, _client.Width, _client.Height, _client.BytesPerPixel);
-                
+
                 // Send backbuffer
                 _client.SendImage(backBuffer);
             }

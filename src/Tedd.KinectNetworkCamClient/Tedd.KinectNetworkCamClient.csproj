@@ -19,7 +19,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Kinect" Version="2.0.1410.19000" />
     <PackageReference Include="Tedd.RandomUtils" Version="1.0.4" />
-    <PackageReference Include="Tedd.WriteableBitmap" Version="1.0.1" />
+    <PackageReference Include="Tedd.WriteableBitmap" Version="1.0.2" />
   </ItemGroup>
 
   <ItemGroup>

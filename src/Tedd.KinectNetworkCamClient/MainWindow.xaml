@@ -5,25 +5,25 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Tedd.KinectNetworkCamClient"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800"
+        Title="MainWindow" Height="650" Width="800"
         d:DataContext="{d:DesignInstance Type=local:ImageMixer, IsDesignTimeCreatable=True}">
 
     <Grid>
 
-        <Viewbox Grid.Row="1" HorizontalAlignment="Center">
+        <!--<Viewbox Grid.Row="1" HorizontalAlignment="Center">-->
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Image Grid.Row="0" Grid.Column="0" Source="{Binding BackgroundImageSource}" Stretch="UniformToFill" />
-                <Image Grid.Row="0" Grid.Column="1" Source="{Binding ForegroundImageSource}" Stretch="UniformToFill" />
-                <Image Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Source="{Binding ForegroundImageSource}" Stretch="UniformToFill" />
+                <Image Grid.Row="0" Grid.Column="0" Source="{Binding BackgroundImageSource}" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                <Image Grid.Row="0" Grid.Column="1" Source="{Binding ForegroundImageSource}" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                <Image Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Source="{Binding FinishedImageSource}" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
             </Grid>
-        </Viewbox>
+        <!--</Viewbox>-->
     </Grid>
 </Window>

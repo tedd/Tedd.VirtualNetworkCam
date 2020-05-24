@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -26,8 +27,11 @@ namespace Tedd.KinectNetworkCamClient.Cam
         public readonly ReaderWriterLockSlim ColorImageLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
 
         public delegate void NewImageDelegate(KinectCam sender, byte[] imagePointer);
-
         public event NewImageDelegate NewImage;
+        private Thread EventQueueThread;
+        private bool ColorImageIsQueued = false;
+        private readonly ManualResetEventSlim _nextImageWaiter = new ManualResetEventSlim(false);
+        private ConcurrentQueue<MultiSourceFrame> _frameQueue = new ConcurrentQueue<MultiSourceFrame>();
 
         /// <summary>
         /// Map depth range to byte range
@@ -57,6 +61,34 @@ namespace Tedd.KinectNetworkCamClient.Cam
             _colorMappedToDepthPoints = new DepthSpacePoint[ColorFrameDescription.Width * ColorFrameDescription.Height];
 
             _kinectSensor.Open();
+
+            // Kinect will by default return data on GUI thread. We queue the frame there and signal this thread to do the actual processing.
+            EventQueueThread = new Thread(EventQueueThreadLoop)
+            {
+                Name = nameof(EventQueueThread),
+                IsBackground = true
+            };
+            EventQueueThread.Start();
+
+        }
+
+        private void EventQueueThreadLoop()
+        {
+            for (; ; )
+            {
+                _nextImageWaiter.Reset();
+                _nextImageWaiter.Wait();
+
+                // We want only the latest, skipping any if we are behind
+                while (_frameQueue.Count > 1)
+                    _frameQueue.TryDequeue(out _);
+
+                // Try to get latest frame
+                if (!_frameQueue.TryDequeue(out var multiSourceFrame))
+                    continue;
+
+                ProcessMultisourceFrame(multiSourceFrame);
+            }
         }
 
         private unsafe void Reader_MultiSourceFrameArrived(object sender, MultiSourceFrameArrivedEventArgs e)
@@ -64,6 +96,12 @@ namespace Tedd.KinectNetworkCamClient.Cam
             var multiSourceFrame = e.FrameReference.AcquireFrame();
             if (multiSourceFrame == null)
                 return;
+            _frameQueue.Enqueue(multiSourceFrame);
+            _nextImageWaiter.Set();
+        }
+
+        private unsafe void ProcessMultisourceFrame(MultiSourceFrame multiSourceFrame)
+        {
 
             // Aquiure all frames
             using var depthFrame = multiSourceFrame.DepthFrameReference.AcquireFrame();
@@ -94,7 +132,7 @@ namespace Tedd.KinectNetworkCamClient.Cam
 
                 //colorFrameSpan.CopyTo(colorImageSpan);
                 colorFrame.CopyConvertedFrameDataToArray(ColorImage, ColorImageFormat.Bgra);
-                
+
                 // Get body index data
                 using var bodyIndexData = bodyIndexFrame.LockImageBuffer();
                 var bodyIndexDataPointer = (byte*)bodyIndexData.UnderlyingBuffer;
@@ -127,20 +165,20 @@ namespace Tedd.KinectNetworkCamClient.Cam
                                 //colorImageSpan[(colorIndex * 4) - 3] = colorFrameSpan[(colorIndex * 2) + 2];
                                 //colorImageSpan[(colorIndex * 4) - 2] = colorFrameSpan[(colorIndex * 2) + 1];
                                 //colorImageSpan[(colorIndex * 4) - 1] = colorFrameSpan[(colorIndex * 2) + 2];
+                                colorImageSpanUInt32[colorIndex] |= 0x000000FF;
                                 continue;
                             }
                         }
                     }
 
-                    // Its two bytes per pixel
-                    colorImageSpanUInt32[colorIndex] = 0x0000FF00;
-                    //colorImageSpan[(colorIndex * 2) + 0] = 0;
-                    //colorImageSpan[(colorIndex * 2) + 1] = 0;
+                    // Background
+                    colorImageSpanUInt32[colorIndex] = 0x00000000;
                 }
             }
             ColorImageLock.ExitWriteLock();
-
             NewImage?.Invoke(this, ColorImage);
+            
+
         }
 
         private void Sensor_IsAvailableChanged(object sender, IsAvailableChangedEventArgs e)
@@ -148,7 +186,7 @@ namespace Tedd.KinectNetworkCamClient.Cam
 
         }
 
-      
+
         #region IDisposable
 
         /// <summary>Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.</summary>

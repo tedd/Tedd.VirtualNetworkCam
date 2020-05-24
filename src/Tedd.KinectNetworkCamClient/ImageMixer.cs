@@ -56,15 +56,15 @@ namespace Tedd.KinectNetworkCamClient
             {
                 var size = Width * Height;
 
-                var background = new Span<byte>((void*) BackgroundImage.MapView.ToPointer(), size * 4);
-                var cameraUInt = new Span<UInt32>((void*) ForegroundImage.MapView.ToPointer(), size * 4);
-                var finishedUInt = new Span<UInt32>((void*) FinishedImage.MapView.ToPointer(), size * 4);
+                var background = BackgroundImage.ToSpanUInt32();
+                var cameraUInt = ForegroundImage.ToSpanUInt32();
+                var finishedUInt = FinishedImage.ToSpanUInt32();
 
                 // Blend
                 for (int i = 0; i < size; i++)
                 {
                     var src = cameraUInt[i];
-                    finishedUInt[i] = Blend(background[i], src, (byte) src);
+                    finishedUInt[i] = Blend(background[i], src);
                 }
             }
             finally
@@ -73,21 +73,39 @@ namespace Tedd.KinectNetworkCamClient
             }
         }
 
-        private static UInt32 Blend(UInt32 color1, UInt32 color2, UInt32 alpha)
+        private static UInt32 Blend(UInt32 background, UInt32 foreground)
         {
-            UInt32 rb = color1 & 0xff00ff;
-            UInt32 g = color1 & 0x00ff00;
-            rb += ((color2 & 0xff00ff) - rb) * alpha >> 8;
-            g += ((color2 & 0x00ff00) - g) * alpha >> 8;
-            return (rb & 0xff00ff) | (g & 0xff00);
+            var fga = (foreground & 0x000000FF);
+            if (fga == 0)
+                return background | 0xFF000000;
+            var alpha = ((fga)) / 255f;
+            var alphaR = 1f - alpha;
+            //var r = (byte)(((background >> 24) * alphaR) + ((foreground >> 24) * alpha));
+            var b = (byte)((((background >> 24) & 0xFF) * alphaR) + (((foreground >> 24) & 0xFF) * alpha));
+            var g = (byte)((((background >>16) & 0xFF) * alphaR) + (((foreground >> 16) & 0xFF) * alpha));
+            var r = (byte)((((background >> 8) & 0xFF) * alphaR) + (((foreground >> 8) & 0xFF) * alpha));
+            var a = 255;
+            return ((uint)b << 24) | ((uint)g << 16) | ((uint)r << 8) | (uint)a;
+            //if (alpha == 0)
+            //    return color1;
+            //return color2;
         }
+
+        //private static UInt32 Blend(UInt32 color1, UInt32 color2, UInt32 alpha)
+        //{
+        //    UInt32 rb = color1 & 0xff00ff;
+        //    UInt32 g = color1 & 0x00ff00;
+        //    rb += ((color2 & 0xff00ff) - rb) * alpha >> 8;
+        //    g += ((color2 & 0x00ff00) - g) * alpha >> 8;
+        //    return (rb & 0xff00ff) | (g & 0xff00);
+        //}
 
         public unsafe void CopyTo(Span<byte> target, int width, int height, int bytesPerPixel)
         {
             try
             {
                 UpdateLock.EnterReadLock();
-                
+
                 // Source image
                 var image = FinishedImage.ToSpanByte();
 
@@ -154,27 +172,27 @@ namespace Tedd.KinectNetworkCamClient
 
         public void UpdateForeground(Span<byte> image)
         {
-            UpdageImage(ForegroundImage, image);
+            UpdateImage(ForegroundImage, image);
         }
 
         public void UpdateBackground(Span<byte> image)
         {
-            UpdageImage(BackgroundImage, image);
+            UpdateImage(BackgroundImage, image);
         }
 
-        private unsafe void UpdageImage(WriteableBitmap target, Span<byte> image)
+        private unsafe void UpdateImage(WriteableBitmap target, Span<byte> image)
         {
-            try
-            {
-                UpdateLock.EnterWriteLock();
+            //try
+            //{
+            //    UpdateLock.EnterWriteLock();
 
-                // Copy image to target
-                image.CopyTo(target.ToSpanByte());
-            }
-            finally
-            {
-                UpdateLock.ExitWriteLock();
-            }
+            // Copy image to target
+            image.CopyTo(target.ToSpanByte());
+            //}
+            //finally
+            //{
+            //    UpdateLock.ExitWriteLock();
+            //}
         }
     }
 }
